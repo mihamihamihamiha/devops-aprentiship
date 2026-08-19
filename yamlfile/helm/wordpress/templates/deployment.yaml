@@ -1,0 +1,78 @@
+apiVersion: apps/v1 
+kind: Deployment 
+metadata: 
+  name: {{ .Release.Name }}-wordpress 
+  namespace: {{ .Release.Namespace }} 
+  labels: 
+    app.kubernetes.io/name: wordpress 
+    app.kubernetes.io/instance: {{ .Release.Name }} 
+spec: 
+  replicas: {{ .Values.replicaCount }} 
+  strategy: 
+    type: RollingUpdate 
+    rollingUpdate: 
+      maxUnavailable: 0 
+      maxSurge: 1 
+  selector: 
+    matchLabels: 
+      app.kubernetes.io/name: wordpress 
+      app.kubernetes.io/instance: {{ .Release.Name }} 
+  template: 
+    metadata: 
+      labels: 
+        app.kubernetes.io/name: wordpress 
+        app.kubernetes.io/instance: {{ .Release.Name }} 
+    spec: 
+      containers: 
+        - name: wordpress 
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}" 
+          imagePullPolicy: {{ .Values.image.pullPolicy }} 
+          ports: 
+            - name: http 
+              containerPort: 80 
+              protocol: TCP 
+          env: 
+            - name: WORDPRESS_DB_HOST 
+              value: "{{ .Values.database.host }}" 
+            - name: WORDPRESS_DB_NAME 
+              valueFrom: 
+                secretKeyRef: 
+                  name: {{ .Values.database.secretName }} 
+                  key: {{ .Values.database.nameKey }} 
+            - name: WORDPRESS_DB_USER 
+              valueFrom: 
+                secretKeyRef: 
+                  name: {{ .Values.database.secretName }} 
+                  key: {{ .Values.database.userKey }} 
+            - name: WORDPRESS_DB_PASSWORD 
+              valueFrom: 
+                secretKeyRef: 
+                  name: {{ .Values.database.secretName }} 
+                  key: {{ .Values.database.passwordKey }} 
+          resources: 
+            {{- toYaml .Values.resources | nindent 12 }} 
+          securityContext: 
+            allowPrivilegeEscalation: false 
+          readinessProbe: 
+            httpGet: 
+              path: /wp-admin/install.php 
+              port: http 
+            initialDelaySeconds: 10 
+            periodSeconds: 10 
+            timeoutSeconds: 5 
+            failureThreshold: 3 
+          livenessProbe: 
+            httpGet: 
+              path: /wp-admin/install.php 
+              port: http 
+            initialDelaySeconds: 30 
+            periodSeconds: 20 
+            timeoutSeconds: 5 
+            failureThreshold: 3 
+          volumeMounts: 
+            - name: wordpress-data 
+              mountPath: /var/www/html 
+      volumes: 
+        - name: wordpress-data 
+          persistentVolumeClaim: 
+            claimName: wordpress-data
