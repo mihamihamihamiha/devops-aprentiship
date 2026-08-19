@@ -1,0 +1,84 @@
+apiVersion: apps/v1 
+kind: Deployment 
+metadata: 
+  name: wordpress 
+  namespace: wordpress 
+spec: 
+  replicas: 1 
+  strategy: 
+    type: RollingUpdate 
+    rollingUpdate: 
+      maxUnavailable: 25% 
+      maxSurge: 25% 
+  selector: 
+    matchLabels: 
+      app: wordpress 
+  template: 
+    metadata: 
+      labels: 
+        app: wordpress 
+    spec: 
+      containers: 
+        - name: wordpress 
+          image: wordpress-custom:1.0 
+          imagePullPolicy: Never 
+          ports: 
+            - containerPort: 80 
+              protocol: TCP 
+          env: 
+            - name: WORDPRESS_DB_HOST 
+              value: mariadb.wordpress.svc.cluster.local:3306 
+            - name: WORDPRESS_DB_NAME 
+              valueFrom: 
+                secretKeyRef: 
+                  name: mariadb-credentials 
+                  key: MARIADB_DATABASE 
+            - name: WORDPRESS_DB_USER 
+              valueFrom: 
+                secretKeyRef: 
+                  name: mariadb-credentials 
+                  key: MARIADB_USER 
+            - name: WORDPRESS_DB_PASSWORD 
+              valueFrom: 
+                secretKeyRef: 
+                  name: mariadb-credentials 
+                  key: MARIADB_PASSWORD 
+          resources: 
+            requests: 
+              cpu: "100m" 
+              memory: "256Mi" 
+            limits: 
+              cpu: "500m" 
+              memory: "512Mi" 
+          securityContext: 
+            allowPrivilegeEscalation: false 
+            capabilities: 
+              drop: 
+                - ALL 
+          readinessProbe: 
+            httpGet: 
+              path: /wp-admin/install.php 
+              port: 80 
+              scheme: HTTP 
+            initialDelaySeconds: 60 
+            periodSeconds: 15 
+            timeoutSeconds: 10 
+            failureThreshold: 5 
+            successThreshold: 1 
+          livenessProbe: 
+            httpGet: 
+              path: /wp-admin/install.php 
+              port: 80 
+              scheme: HTTP 
+            initialDelaySeconds: 120 
+            periodSeconds: 30 
+            timeoutSeconds: 10 
+            failureThreshold: 5 
+            successThreshold: 1 
+          volumeMounts: 
+            - name: wordpress-data 
+              mountPath: /var/www/html 
+      volumes: 
+        - name: wordpress-data 
+          persistentVolumeClaim: 
+            claimName: wordpress-data 
