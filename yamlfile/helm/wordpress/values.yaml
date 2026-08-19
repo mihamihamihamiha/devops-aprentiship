@@ -1,0 +1,35 @@
+replicaCount: 2 
+image: 
+  repository: wordpress-custom 
+  tag: "1.1" 
+  pullPolicy: IfNotPresent 
+service: 
+  type: ClusterIP 
+  port: 80 
+database: 
+  host: mariadb.wordpress.svc.cluster.local:3306 
+  secretName: mariadb-credentials 
+  nameKey: MARIADB_DATABASE 
+  userKey: MARIADB_USER 
+  passwordKey: MARIADB_PASSWORD 
+resources: 
+  requests: 
+    cpu: 100m 
+    memory: 256Mi 
+  limits: 
+    cpu: 500m 
+    memory: 512Mi 
+autoscaling: 
+  enabled: true 
+  minReplicas: 2 
+  maxReplicas: 3 
+  cpuUtilization: 70 
+pdb: 
+  enabled: true 
+  minAvailable: 1 
+ingress: 
+  enabled: true 
+  className: public 
+  host: wordpress.local 
+  tls: true 
+  secretName: wordpress-tls
