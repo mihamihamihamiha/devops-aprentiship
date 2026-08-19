@@ -1,0 +1,58 @@
+apiVersion: apps/v1 
+kind: Deployment 
+metadata: 
+  name: mariadb 
+  namespace: wordpress 
+spec: 
+  replicas: 1 
+  selector: 
+    matchLabels: 
+      app: mariadb 
+  template: 
+    metadata: 
+      labels: 
+        app: mariadb 
+    spec: 
+      containers: 
+        - name: mariadb 
+          image: mariadb:11.4 
+          ports: 
+            - containerPort: 3306 
+          env: 
+            - name: MARIADB_ROOT_PASSWORD 
+              valueFrom: 
+                secretKeyRef: 
+                  name: mariadb-credentials 
+                  key: MARIADB_ROOT_PASSWORD 
+            - name: MARIADB_DATABASE 
+              valueFrom: 
+                secretKeyRef: 
+                  name: mariadb-credentials 
+                  key: MARIADB_DATABASE 
+            - name: MARIADB_USER 
+              valueFrom: 
+                secretKeyRef: 
+                  name: mariadb-credentials 
+                  key: MARIADB_USER 
+            - name: MARIADB_PASSWORD 
+              valueFrom: 
+                secretKeyRef: 
+                  name: mariadb-credentials 
+                  key: MARIADB_PASSWORD 
+          securityContext: 
+            allowPrivilegeEscalation: false 
+            privileged: false 
+          resources: 
+            requests: 
+              cpu: "100m" 
+              memory: "256Mi" 
+            limits: 
+              cpu: "500m" 
+              memory: "512Mi" 
+          volumeMounts: 
+            - name: mariadb-data 
+              mountPath: /var/lib/mysql 
+      volumes: 
+        - name: mariadb-data 
+          persistentVolumeClaim: 
+            claimName: mariadb-data 
