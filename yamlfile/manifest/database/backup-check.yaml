@@ -1,0 +1,25 @@
+apiVersion: v1  
+kind: Pod  
+metadata:  
+  name: backup-check  
+  namespace: database  
+spec:  
+  restartPolicy: Never  
+  containers:  
+    - name: checker  
+      image: busybox:1.36  
+      command:  
+        - sh  
+        - -c  
+        - |  
+          echo "=== BACKUP FILES ==="  
+          ls -lh /backups  
+          echo "=== DONE ==="  
+          sleep 300  
+      volumeMounts:  
+        - name: backup-storage  
+          mountPath: /backups  
+  volumes:  
+    - name: backup-storage  
+      persistentVolumeClaim:  
+        claimName: postgres-backups  
