@@ -1,0 +1,15 @@
+.git 
+.gitignore 
+.env 
+.env.* 
+*.key 
+*.pem 
+*.log 
+*.dump 
+*.sql 
+backups/ 
+manifests/ 
+.git/ 
+.github/ 
+.vscode/ 
+.idea/ 
