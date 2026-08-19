@@ -1,12 +1,82 @@
-apiVersion: v1  
-kind: PersistentVolumeClaim  
-metadata:  
-  name: postgres-backups  
-  namespace: database  
-spec:  
-  storageClassName: microk8s-hostpath  
-  accessModes:  
-    - ReadWriteOnce  
-  resources:  
-    requests:  
-      storage: 5Gi
+apiVersion: batch/v1 
+kind: Job 
+metadata: 
+  name: postgres-restore 
+  namespace: database 
+spec: 
+  backoffLimit: 1 
+  template: 
+    metadata: 
+      labels: 
+        app: postgres-restore 
+    spec: 
+      restartPolicy: Never 
+      containers: 
+        - name: restore 
+          image: postgres:16 
+          env: 
+            - name: PGHOST 
+              value: postgres 
+            - name: PGPORT 
+              value: "5432" 
+            - name: PGUSER 
+              value: postgres_admin 
+            - name: PGPASSWORD 
+              valueFrom: 
+                secretKeyRef: 
+                  name: postgres-credentials 
+                  key: POSTGRES_PASSWORD 
+          command: 
+            - /bin/sh 
+            - -c 
+            - | 
+              set -e 
+              echo "Starting PostgreSQL restore..." 
+              psql \ 
+                -h postgres \ 
+                -U postgres_admin \ 
+                -d postgres \ 
+                -c "DROP DATABASE IF EXISTS restore_test;" 
+              psql \ 
+                -h postgres \ 
+                -U postgres_admin \ 
+                -d postgres \ 
+                -c "CREATE DATABASE restore_test;" 
+              echo "Restoring backup..." 
+              pg_restore \ 
+                -h postgres \ 
+                -U postgres_admin \ 
+                -d restore_test \ 
+                --no-owner \ 
+                --no-acl \ 
+                /backups/postgres_backup.dump 
+              echo "Restore completed successfully." 
+              echo "Checking restored database..." 
+              psql \ 
+                -h postgres \ 
+                -U postgres_admin \ 
+                -d restore_test \ 
+                -c "\dt" 
+              echo "Restore verification completed." 
+          resources: 
+            requests: 
+              cpu: "50m" 
+              memory: "128Mi" 
+            limits: 
+              cpu: "200m" 
+              memory: "256Mi" 
+          securityContext: 
+            runAsNonRoot: true 
+            runAsUser: 999 
+            runAsGroup: 999 
+            allowPrivilegeEscalation: false 
+            capabilities: 
+              drop: 
+                - ALL 
+          volumeMounts: 
+            - name: backup-storage 
+              mountPath: /backups 
+      volumes: 
+        - name: backup-storage 
+          persistentVolumeClaim: 
+            claimName: postgres-backups 
