@@ -266,9 +266,6 @@ SELECT version();
 
 Successful output confirms that the PostgreSQL service is reachable.
 
-**Screenshot:**
-`[Insert screenshot showing successful PostgreSQL connection and SELECT version() here]`
-
 ---
 
 # 8. PostgreSQL backup
@@ -322,9 +319,6 @@ View logs:
 ```bash
 microk8s kubectl logs job/<job-name> -n database
 ```
-
-**Screenshot:**
-`[Insert screenshot showing CronJob and completed PostgreSQL backup Job here]`
 
 ---
 
