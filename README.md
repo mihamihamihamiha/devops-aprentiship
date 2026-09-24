@@ -75,9 +75,6 @@ PersistentVolumeClaim
 | Package management      | Helm                      |
 | Container runtime       | containerd                |
 
-**Screenshot:**
-`[Insert architecture / network diagram here]`
-
 ---
 
 # 2. Environment
