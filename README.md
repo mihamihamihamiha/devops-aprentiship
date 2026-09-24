@@ -355,9 +355,6 @@ or:
 SELECT current_database();
 ```
 
-**Screenshot:**
-`[Insert screenshot showing successful restore Job / restore logs here]`
-
 ---
 
 # 11. WordPress deployment
