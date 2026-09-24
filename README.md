@@ -101,7 +101,6 @@ Check all Kubernetes workloads:
 ```bash
 microk8s kubectl get pods -A
 ```
-
 ---
 
 # 3. MicroK8s
@@ -139,7 +138,6 @@ Example expected result:
 NAME       STATUS   ROLES    AGE
 debian12   Ready    <none>   ...
 ```
-
 ---
 
 # 4. PostgreSQL
@@ -354,7 +352,6 @@ or:
 ```sql
 SELECT current_database();
 ```
-
 ---
 
 # 11. WordPress deployment
@@ -469,10 +466,6 @@ For the Traefik installation:
 ```bash
 microk8s helm3 get values traefik -n ingress -a
 ```
-
-**Screenshot:**
-`[Insert screenshot showing rendered Helm values and PostgreSQL configuration here]`
-
 ---
 
 # 16. Custom WordPress image
@@ -520,9 +513,6 @@ cp -a /usr/src/wordpress/wp-content/pg4wp /work/wp-content/pg4wp
 cp /usr/src/wordpress/wp-content/db.php /work/wp-content/db.php
 ```
 
-**Screenshot:**
-`[Insert screenshot showing pg4wp and db.php inside the WordPress container/PVC here]`
-
 ---
 
 # 18. WordPress readiness and liveness
@@ -542,9 +532,6 @@ The output can be used to demonstrate:
 * Resource requests
 * Resource limits
 * Rolling update strategy
-
-**Screenshot:**
-`[Insert screenshot showing Deployment probes, resources and RollingUpdate strategy here]`
 
 ---
 
@@ -691,9 +678,6 @@ HTTP/2 200
 content-type: text/html; charset=utf-8
 ```
 
-**Screenshot:**
-`[Insert screenshot showing HTTPS 200 response here]`
-
 ---
 
 # 24. Nginx reverse proxy
@@ -813,9 +797,6 @@ capabilities:
 readOnlyRootFilesystem: true
 ```
 
-**Screenshot:**
-`[Insert screenshot showing SecurityContext configuration here]`
-
 ---
 
 # 28. NetworkPolicy
@@ -889,10 +870,6 @@ microk8s kubectl get networkpolicy -A
 ```bash
 microk8s kubectl get cronjob -A
 ```
-
-**Screenshot:**
-`[Insert final Kubernetes status screenshot here]`
-
 ---
 
 # 30. Troubleshooting
