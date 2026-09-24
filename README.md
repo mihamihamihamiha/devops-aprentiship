@@ -1,341 +1,630 @@
-# devops-aprentiship
-# WordPress on Kubernetes
+# Kubernetes WordPress DevOps Project
 
-## 1. Project Overview
+## Overview
 
-This project demonstrates deployment of a production-style WordPress application on a local Kubernetes cluster using MicroK8s.
+This project demonstrates the deployment and operation of a WordPress application on Kubernetes using **MicroK8s** on a **Debian 12 virtual machine**.
 
-The infrastructure includes:
+The environment includes:
 
 * MicroK8s Kubernetes cluster
-* WordPress
-* MariaDB
-* Persistent storage
-* Kubernetes Secrets
-* ClusterIP Services
-* NGINX Ingress
-* TLS/HTTPS
+* Traefik Ingress Controller
+* WordPress deployed using Helm
+* PostgreSQL deployed in Kubernetes
+* Persistent storage using PVCs
+* Kubernetes Secrets for database credentials
+* Kubernetes ConfigMaps
+* PostgreSQL backup using Kubernetes CronJob
+* TLS termination
+* Nginx reverse proxy on the Debian VM
+* Kubernetes NetworkPolicy
 * Resource requests and limits
-* Liveness and readiness probes
-* Horizontal Pod Autoscaler
-* PodDisruptionBudget
-* Helm chart
-* Scheduled database backups
-
-The project is designed to demonstrate Kubernetes administration, containerisation, persistent storage, application availability and Helm-based deployment.
+* Kubernetes health probes
+* Security contexts
+* Rolling updates
+* Custom WordPress Docker image
 
 ---
 
-## 2. Architecture
+# 1. Architecture
 
-The application follows this architecture:
+The infrastructure consists of a Debian 12 virtual machine running MicroK8s.
+
+Traffic follows this path:
 
 ```text
-                         Client
-                           |
-                           | HTTPS
-                           v
-                    NGINX Ingress
-                           |
-                           v
-                 WordPress ClusterIP
-                           |
-                           v
-                 WordPress Deployment
-                    /             \
-                   /               \
-             Pod 1                  Pod 2
-                   \               /
-                    \             /
-                     Persistent
-                       Storage
-                           |
-                           v
-                       MariaDB
-                           |
-                           v
-                    MariaDB PVC
+Client
+  |
+  | HTTPS :443
+  v
+Nginx
+  |
+  | HTTP
+  v
+Traefik Ingress Controller
+  |
+  | Kubernetes Ingress
+  v
+WordPress Service
+  |
+  v
+WordPress Pods
+  |
+  | PostgreSQL connection
+  v
+PostgreSQL Service
+  |
+  v
+PostgreSQL StatefulSet
+  |
+  v
+PersistentVolumeClaim
 ```
 
 ### Main components
 
-| Component            | Purpose                                                        |
-| -------------------- | -------------------------------------------------------------- |
-| WordPress Deployment | Runs the WordPress application                                 |
-| MariaDB              | Stores WordPress data                                          |
-| PVC                  | Provides persistent storage                                    |
-| Service              | Provides internal Kubernetes networking                        |
-| Ingress              | Provides HTTP/HTTPS access                                     |
-| Secret               | Stores database credentials                                    |
-| HPA                  | Scales WordPress based on CPU utilisation                      |
-| PDB                  | Protects application availability during voluntary disruptions |
-| Helm                 | Provides templated and repeatable deployment                   |
-| CronJob              | Performs scheduled database backups                            |
+| Component               | Technology                |
+| ----------------------- | ------------------------- |
+| Operating System        | Debian 12                 |
+| Container orchestration | MicroK8s                  |
+| Ingress Controller      | Traefik                   |
+| Web application         | WordPress                 |
+| Database                | PostgreSQL                |
+| Reverse Proxy           | Nginx                     |
+| Storage                 | Kubernetes PVC            |
+| TLS                     | Kubernetes Secret / Nginx |
+| Package management      | Helm                      |
+| Container runtime       | containerd                |
+
+**Screenshot:**
+`[Insert architecture / network diagram here]`
 
 ---
 
-## 3. Prerequisites
+# 2. Environment
 
-The following software is required:
+The project was implemented on a Debian 12 virtual machine accessed through SSH.
 
-* Debian 12
-* MicroK8s
-* kubectl / `microk8s kubectl`
-* Helm
-* Docker
-* Git
-
-Required MicroK8s addons:
+Check the operating system:
 
 ```bash
-microk8s enable dns
-microk8s enable ingress
-microk8s enable metrics-server
-microk8s enable storage
+cat /etc/os-release
 ```
 
-Verify the cluster:
+Check the Kubernetes node:
+
+```bash
+microk8s kubectl get nodes -o wide
+```
+
+Check all Kubernetes workloads:
+
+```bash
+microk8s kubectl get pods -A
+```
+
+---
+
+# 3. MicroK8s
+
+MicroK8s was used as the Kubernetes distribution.
+
+Required addons:
+
+* DNS
+* Ingress
+* Metrics Server
+* Storage
+
+Check enabled addons:
 
 ```bash
 microk8s status
+```
+
+Check Kubernetes nodes:
+
+```bash
 microk8s kubectl get nodes
 ```
 
-The node should report:
+Check all pods:
+
+```bash
+microk8s kubectl get pods -A
+```
+
+Example expected result:
 
 ```text
-Ready
+NAME       STATUS   ROLES    AGE
+debian12   Ready    <none>   ...
 ```
 
 ---
 
-## 4. Deployment
+# 4. PostgreSQL
 
-Clone the repository:
+PostgreSQL is deployed in the `database` namespace.
 
-```bash
-git clone <REPOSITORY_URL>
-cd <REPOSITORY_DIRECTORY>
-```
-
-Create the required namespaces:
+Check the namespace:
 
 ```bash
-microk8s kubectl apply -f manifest/namespace.yaml
+microk8s kubectl get all -n database
 ```
 
-Deploy the database:
+The database consists of:
+
+* StatefulSet
+* PostgreSQL Pod
+* ClusterIP Service
+* PersistentVolumeClaim
+* Kubernetes Secret
+
+Check StatefulSet:
 
 ```bash
-microk8s kubectl apply -f manifest/mariadb.yaml
+microk8s kubectl get statefulset -n database
 ```
 
-Verify MariaDB:
+Check PostgreSQL Pod:
+
+```bash
+microk8s kubectl get pods -n database
+```
+
+Check Service:
+
+```bash
+microk8s kubectl get svc -n database
+```
+
+Expected service:
+
+```text
+postgres   ClusterIP   ...   5432/TCP
+```
+
+Check PVC:
+
+```bash
+microk8s kubectl get pvc -n database
+```
+
+---
+
+# 5. PostgreSQL credentials
+
+Database credentials are stored using a Kubernetes Secret.
+
+Check the Secret:
+
+```bash
+microk8s kubectl get secret -n database
+```
+
+The passwords are not stored directly in the Kubernetes YAML manifests.
+
+Inspect Secret keys without displaying the decoded passwords:
+
+```bash
+microk8s kubectl get secret postgres-credentials \
+  -n database \
+  -o jsonpath='{.data}' | \
+  sed 's/,/\n/g' | \
+  sed 's/:[^,}]*/: [REDACTED]/g'
+```
+
+The application uses the Secret instead of hard-coded credentials.
+
+---
+
+# 6. PostgreSQL database for WordPress
+
+The WordPress database is hosted by PostgreSQL.
+
+The Kubernetes service DNS name is:
+
+```text
+postgres.database.svc.cluster.local
+```
+
+Port:
+
+```text
+5432
+```
+
+The WordPress database configuration uses:
+
+```text
+WORDPRESS_DB_HOST=postgres.database.svc.cluster.local:5432
+```
+
+---
+
+# 7. PostgreSQL connection test
+
+A PostgreSQL client can be used to verify the connection.
+
+For example, create a temporary PostgreSQL client:
+
+```bash
+microk8s kubectl run psql-test \
+  -n database \
+  --image=postgres:16 \
+  --rm -it \
+  --restart=Never \
+  -- \
+  psql -h postgres \
+  -U postgres \
+  -d postgres
+```
+
+After entering the password, run:
+
+```sql
+SELECT version();
+```
+
+Successful output confirms that the PostgreSQL service is reachable.
+
+**Screenshot:**
+`[Insert screenshot showing successful PostgreSQL connection and SELECT version() here]`
+
+---
+
+# 8. PostgreSQL backup
+
+PostgreSQL backups are automated using a Kubernetes CronJob.
+
+Check the CronJob:
+
+```bash
+microk8s kubectl get cronjob -n database
+```
+
+Check backup Jobs:
+
+```bash
+microk8s kubectl get jobs -n database
+```
+
+Check backup storage:
+
+```bash
+microk8s kubectl get pvc -n database
+```
+
+The backup process uses:
+
+```text
+pg_dump
+```
+
+and stores the resulting backup files on persistent storage.
+
+---
+
+# 9. Backup verification
+
+List backup files inside the backup environment:
+
+```bash
+microk8s kubectl exec -n database <backup-pod> -- ls -lh /backups
+```
+
+Alternatively, inspect the completed backup Job:
+
+```bash
+microk8s kubectl describe job <job-name> -n database
+```
+
+View logs:
+
+```bash
+microk8s kubectl logs job/<job-name> -n database
+```
+
+**Screenshot:**
+`[Insert screenshot showing CronJob and completed PostgreSQL backup Job here]`
+
+---
+
+# 10. PostgreSQL restore
+
+A PostgreSQL backup can be restored using `psql` or the appropriate PostgreSQL restore command depending on the backup format.
+
+Example:
+
+```bash
+psql -h postgres \
+  -U postgres \
+  -d wordpress_db \
+  < backup.sql
+```
+
+After restoration, verify the database:
+
+```sql
+\dt
+```
+
+or:
+
+```sql
+SELECT current_database();
+```
+
+**Screenshot:**
+`[Insert screenshot showing successful restore Job / restore logs here]`
+
+---
+
+# 11. WordPress deployment
+
+WordPress is deployed in the `wordpress` namespace.
+
+Check the namespace:
+
+```bash
+microk8s kubectl get all -n wordpress
+```
+
+Check WordPress Pods:
 
 ```bash
 microk8s kubectl get pods -n wordpress
+```
+
+Expected state:
+
+```text
+wordpress-...   1/1   Running
+wordpress-...   1/1   Running
+```
+
+Two replicas are used to demonstrate Kubernetes deployment and rolling update functionality.
+
+---
+
+# 12. WordPress Service
+
+Check the WordPress Service:
+
+```bash
+microk8s kubectl get svc -n wordpress
+```
+
+The WordPress application is exposed internally through a Kubernetes `ClusterIP` Service.
+
+Example:
+
+```text
+wordpress-helm-wordpress   ClusterIP   ...   80/TCP
+```
+
+---
+
+# 13. WordPress Persistent Storage
+
+WordPress uses a PersistentVolumeClaim for persistent application data.
+
+Check PVCs:
+
+```bash
 microk8s kubectl get pvc -n wordpress
-microk8s kubectl get svc -n wordpress
 ```
 
-Deploy WordPress:
+Describe the PVC:
 
 ```bash
-microk8s kubectl apply -f manifest/wordpress.yaml
+microk8s kubectl describe pvc wordpress-data -n wordpress
 ```
 
-Deploy networking:
+Persistent storage ensures that application data is not lost when a WordPress Pod is recreated.
 
-```bash
-microk8s kubectl apply -f manifest/ingress.yaml
+---
+
+# 14. WordPress database configuration
+
+The WordPress deployment receives its database configuration from Kubernetes resources.
+
+Database host:
+
+```text
+postgres.database.svc.cluster.local:5432
 ```
 
-Verify:
+Database credentials are provided through a Kubernetes Secret.
+
+Check the Deployment configuration:
 
 ```bash
-microk8s kubectl get pods -n wordpress
-microk8s kubectl get svc -n wordpress
+microk8s kubectl describe deployment wordpress-helm-wordpress -n wordpress
+```
+
+---
+
+# 15. Helm
+
+WordPress was deployed using Helm.
+
+List Helm releases:
+
+```bash
+microk8s helm3 list -A
+```
+
+Example:
+
+```text
+wordpress-helm
+```
+
+Show the configured values:
+
+```bash
+microk8s helm3 get values wordpress-helm -n wordpress -a
+```
+
+For the Traefik installation:
+
+```bash
+microk8s helm3 get values traefik -n ingress -a
+```
+
+**Screenshot:**
+`[Insert screenshot showing rendered Helm values and PostgreSQL configuration here]`
+
+---
+
+# 16. Custom WordPress image
+
+The WordPress deployment uses a custom image:
+
+```text
+wordpress-custom:1.2
+```
+
+Check the image used by the Pods:
+
+```bash
+microk8s kubectl get pods -n wordpress -o jsonpath='{range .items[*]}{.metadata.name}{" -> "}{.spec.containers[*].image}{"\n"}{end}'
+```
+
+The custom image contains the PostgreSQL compatibility components required by the application.
+
+---
+
+# 17. pg4wp configuration
+
+The custom WordPress image contains the PostgreSQL WordPress integration.
+
+The relevant files are:
+
+```text
+wp-content/pg4wp
+wp-content/db.php
+```
+
+They are copied into the WordPress persistent volume by the init container.
+
+Check the init container:
+
+```bash
+microk8s kubectl describe pod -n wordpress <wordpress-pod>
+```
+
+The init container performs operations similar to:
+
+```text
+mkdir -p /work/wp-content
+cp -a /usr/src/wordpress/wp-content/pg4wp /work/wp-content/pg4wp
+cp /usr/src/wordpress/wp-content/db.php /work/wp-content/db.php
+```
+
+**Screenshot:**
+`[Insert screenshot showing pg4wp and db.php inside the WordPress container/PVC here]`
+
+---
+
+# 18. WordPress readiness and liveness
+
+The WordPress Deployment uses Kubernetes health checks.
+
+Check the Deployment:
+
+```bash
+microk8s kubectl describe deployment wordpress-helm-wordpress -n wordpress
+```
+
+The output can be used to demonstrate:
+
+* Readiness probe
+* Liveness probe
+* Resource requests
+* Resource limits
+* Rolling update strategy
+
+**Screenshot:**
+`[Insert screenshot showing Deployment probes, resources and RollingUpdate strategy here]`
+
+---
+
+# 19. Resource limits
+
+The WordPress container has configured resource requests and limits.
+
+Example:
+
+```text
+Requests:
+  CPU:    100m
+  Memory: 256Mi
+
+Limits:
+  CPU:    500m
+  Memory: 512Mi
+```
+
+This prevents the application from consuming unlimited node resources.
+
+---
+
+# 20. Rolling updates
+
+Check the Deployment strategy:
+
+```bash
+microk8s kubectl get deployment wordpress-helm-wordpress \
+  -n wordpress \
+  -o yaml | grep -A8 strategy
+```
+
+The Deployment uses:
+
+```text
+RollingUpdate
+```
+
+This allows Pods to be replaced gradually during an application update.
+
+---
+
+# 21. Ingress
+
+Traefik is used as the Kubernetes Ingress Controller.
+
+Check Traefik:
+
+```bash
+microk8s kubectl get pods -n ingress
+```
+
+Check the Traefik Service:
+
+```bash
+microk8s kubectl get svc -n ingress
+```
+
+The service exposes:
+
+```text
+HTTP  : 80
+HTTPS : 443
+```
+
+Check the WordPress Ingress:
+
+```bash
 microk8s kubectl get ingress -n wordpress
 ```
 
----
-
-## 5. Configuration and Secrets
-
-Database credentials are stored in Kubernetes Secrets rather than directly in YAML manifests.
-
-Example:
-
-```text
-mariadb-credentials
-```
-
-The WordPress container receives its database configuration through environment variables.
-
-The database host is:
-
-```text
-mariadb.wordpress.svc.cluster.local:3306
-```
-
-The database name, username and password are retrieved from Kubernetes Secret references.
-
-This prevents credentials from being hard-coded into application manifests.
-
----
-
-## 6. Persistent Storage
-
-WordPress uses a PersistentVolumeClaim for `/var/www/html`.
-
-MariaDB also uses persistent storage for the database files.
-
-Persistent volumes ensure that application and database data are not lost when Pods are recreated.
-
-Verify storage:
+Detailed configuration:
 
 ```bash
-microk8s kubectl get pvc -A
+microk8s kubectl describe ingress wordpress-helm-wordpress -n wordpress
 ```
-
----
-
-## 7. Health Checks
-
-The WordPress Deployment uses Kubernetes readiness and liveness probes.
-
-Readiness probes prevent Kubernetes from sending traffic to an application that is not ready.
-
-Liveness probes allow Kubernetes to restart a container that has become unhealthy.
-
-Example:
-
-```yaml
-readinessProbe:
-  httpGet:
-    path: /wp-admin/install.php
-    port: 80
-
-livenessProbe:
-  httpGet:
-    path: /wp-admin/install.php
-    port: 80
-```
-
----
-
-## 8. Resource Management
-
-The WordPress container defines CPU and memory requests and limits.
-
-Example:
-
-```yaml
-resources:
-  requests:
-    cpu: 100m
-    memory: 256Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
-```
-
-Requests allow Kubernetes to make scheduling decisions.
-
-Limits prevent a container from consuming unlimited resources.
-
----
-
-## 9. Horizontal Pod Autoscaler
-
-HPA automatically adjusts the number of WordPress replicas based on CPU utilisation.
-
-Current configuration:
-
-```text
-Minimum replicas: 2
-Maximum replicas: 3
-CPU target: 70%
-```
-
-Check HPA:
-
-```bash
-microk8s kubectl get hpa -n wordpress
-```
-
-Detailed information:
-
-```bash
-microk8s kubectl describe hpa -n wordpress
-```
-
----
-
-## 10. PodDisruptionBudget
-
-A PodDisruptionBudget is configured to maintain application availability during voluntary disruptions.
-
-Example:
-
-```yaml
-minAvailable: 1
-```
-
-Check the PDB:
-
-```bash
-microk8s kubectl get pdb -n wordpress
-```
-
----
-
-## 11. Helm Deployment
-
-The project also contains a Helm chart:
-
-```text
-helm/wordpress/
-├── Chart.yaml
-├── values.yaml
-└── templates/
-```
-
-Validate the chart:
-
-```bash
-helm lint helm/wordpress
-```
-
-Render templates:
-
-```bash
-helm template wordpress-helm helm/wordpress -n wordpress
-```
-
-Install:
-
-```bash
-helm install wordpress-helm helm/wordpress -n wordpress
-```
-
-Upgrade:
-
-```bash
-helm upgrade wordpress-helm helm/wordpress -n wordpress
-```
-
-Check the release:
-
-```bash
-helm status wordpress-helm -n wordpress
-```
-
----
-
-## 12. Access to WordPress
-
-WordPress is exposed through the Kubernetes Ingress.
 
 The configured hostname is:
 
@@ -343,193 +632,454 @@ The configured hostname is:
 wordpress.local
 ```
 
-For local testing, the hostname must resolve to the Kubernetes node.
+---
 
-Example `/etc/hosts` entry:
+# 22. TLS
 
-```text
-<VM_IP> wordpress.local
-```
-
-The application is then accessed using:
+TLS is configured for:
 
 ```text
-https://wordpress.local
+wordpress.local
 ```
 
-TLS is configured using the Kubernetes TLS secret:
+The Ingress uses the Kubernetes TLS Secret:
 
 ```text
 wordpress-tls
 ```
 
+Check it:
+
+```bash
+microk8s kubectl get secret wordpress-tls -n wordpress
+```
+
+The Nginx reverse proxy also uses the TLS certificate:
+
+```text
+/etc/nginx/ssl/wordpress.local.crt
+/etc/nginx/ssl/wordpress.local.key
+```
+
 ---
 
-## 13. Verification
+# 23. HTTP and HTTPS testing
 
-Useful verification commands:
+The root WordPress URL currently redirects to the WordPress installation page.
+
+Therefore:
+
+```text
+HTTP / HTTPS root → HTTP/HTTPS 302 → /wp-admin/install.php
+```
+
+This is a WordPress application redirect and does not necessarily indicate an Nginx or Kubernetes error.
+
+Test the final HTTPS page:
+
+```bash
+curl -k -I https://wordpress.local/wp-admin/install.php
+```
+
+Expected result:
+
+```text
+HTTP/2 200
+```
+
+Example:
+
+```text
+HTTP/2 200
+content-type: text/html; charset=utf-8
+```
+
+**Screenshot:**
+`[Insert screenshot showing HTTPS 200 response here]`
+
+---
+
+# 24. Nginx reverse proxy
+
+Nginx runs directly on the Debian VM.
+
+Check the service:
+
+```bash
+sudo systemctl status nginx
+```
+
+Check the configuration:
+
+```bash
+sudo nginx -t
+```
+
+The Nginx configuration contains two server blocks:
+
+```text
+HTTP :80
+HTTPS :443
+```
+
+HTTP traffic is redirected to HTTPS:
+
+```nginx
+return 301 https://wordpress.local$request_uri;
+```
+
+HTTPS traffic is proxied to the Traefik NodePort:
+
+```nginx
+proxy_pass http://127.0.0.1:31064;
+```
+
+---
+
+# 25. Nginx configuration verification
+
+Display the active configuration:
+
+```bash
+sudo nginx -T | grep -n -A20 -B5 "wordpress.local"
+```
+
+The configuration should contain:
+
+```nginx
+server {
+    listen 80;
+    server_name wordpress.local;
+
+    location / {
+        return 301 https://wordpress.local$request_uri;
+    }
+}
+```
+
+and:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name wordpress.local;
+
+    location / {
+        proxy_pass http://127.0.0.1:31064;
+    }
+}
+```
+
+---
+
+# 26. Security
+
+Security controls implemented in the Kubernetes environment include:
+
+* Kubernetes Secrets for credentials
+* No plaintext database passwords in application manifests
+* Non-root container configuration where supported
+* SecurityContext
+* Dropped Linux capabilities
+* `allowPrivilegeEscalation: false`
+* Persistent storage
+* TLS
+* NetworkPolicy
+* Kubernetes resource limits
+* Kubernetes health probes
+* Non-privileged workloads
+
+---
+
+# 27. SecurityContext verification
+
+Check the WordPress Pod:
+
+```bash
+microk8s kubectl get pod -n wordpress <wordpress-pod> -o yaml
+```
+
+Check security-related configuration:
+
+```bash
+microk8s kubectl get pod -n wordpress <wordpress-pod> -o yaml | grep -A15 -B5 securityContext
+```
+
+For Traefik, the Helm configuration includes:
+
+```text
+runAsNonRoot: true
+allowPrivilegeEscalation: false
+capabilities:
+  drop:
+    - ALL
+readOnlyRootFilesystem: true
+```
+
+**Screenshot:**
+`[Insert screenshot showing SecurityContext configuration here]`
+
+---
+
+# 28. NetworkPolicy
+
+Network policies are used to restrict communication between namespaces.
+
+Check NetworkPolicies:
+
+```bash
+microk8s kubectl get networkpolicy -A
+```
+
+Describe a policy:
+
+```bash
+microk8s kubectl describe networkpolicy <policy-name> -n database
+```
+
+The intended architecture allows the application namespace to communicate with PostgreSQL while restricting unnecessary database access.
+
+---
+
+# 29. Final Kubernetes status
+
+Before completing the deployment, verify all major components.
+
+### Nodes
 
 ```bash
 microk8s kubectl get nodes
 ```
 
+### All Pods
+
+```bash
+microk8s kubectl get pods -A
+```
+
+### Services
+
+```bash
+microk8s kubectl get svc -A
+```
+
+### Persistent volumes
+
+```bash
+microk8s kubectl get pv
+```
+
+### PersistentVolumeClaims
+
+```bash
+microk8s kubectl get pvc -A
+```
+
+### Ingress
+
+```bash
+microk8s kubectl get ingress -A
+```
+
+### NetworkPolicies
+
+```bash
+microk8s kubectl get networkpolicy -A
+```
+
+### CronJobs
+
+```bash
+microk8s kubectl get cronjob -A
+```
+
+**Screenshot:**
+`[Insert final Kubernetes status screenshot here]`
+
+---
+
+# 30. Troubleshooting
+
+## Check WordPress Pods
+
 ```bash
 microk8s kubectl get pods -n wordpress
 ```
 
-```bash
-microk8s kubectl get svc -n wordpress
-```
+## Describe a WordPress Pod
 
 ```bash
-microk8s kubectl get ingress -n wordpress
+microk8s kubectl describe pod -n wordpress <pod-name>
 ```
 
-```bash
-microk8s kubectl get pvc -n wordpress
-```
+## Check WordPress logs
 
 ```bash
-microk8s kubectl get hpa -n wordpress
+microk8s kubectl logs -n wordpress <pod-name> -c wordpress
 ```
 
-```bash
-microk8s kubectl get pdb -n wordpress
-```
+## Check init container logs
 
 ```bash
-helm list -n wordpress
+microk8s kubectl logs -n wordpress <pod-name> -c install-pg4wp
+```
+
+## Check PostgreSQL
+
+```bash
+microk8s kubectl get pods -n database
+```
+
+## PostgreSQL logs
+
+```bash
+microk8s kubectl logs -n database <postgres-pod>
+```
+
+## Check Ingress
+
+```bash
+microk8s kubectl describe ingress wordpress-helm-wordpress -n wordpress
+```
+
+## Check Traefik
+
+```bash
+microk8s kubectl logs -n ingress <traefik-pod>
+```
+
+## Check Nginx
+
+```bash
+sudo nginx -t
+sudo systemctl status nginx
+sudo tail -50 /var/log/nginx/error.log
 ```
 
 ---
 
-## 14. Backup
+# 31. GitHub repository structure
 
-The database backup is implemented using a Kubernetes CronJob.
-
-The CronJob periodically creates a backup of the MariaDB database.
-
-Verify the CronJob:
-
-```bash
-microk8s kubectl get cronjob -n wordpress
-```
-
-Check created Jobs:
-
-```bash
-microk8s kubectl get jobs -n wordpress
-```
-
----
-
-## 15. Screenshots
-
-The following screenshots document the working deployment:
-
-### Kubernetes cluster
-
-![Kubernetes cluster](screenshots/01-cluster.png)
-
-### Running Pods
-
-![Running Pods](screenshots/02-pods.png)
-
-### WordPress
-
-![WordPress](screenshots/03-wordpress.png)
-
-### Ingress and HTTPS
-
-![Ingress](screenshots/04-ingress.png)
-
-### HPA
-
-![HPA](screenshots/05-hpa.png)
-
-### Helm
-
-![Helm](screenshots/06-helm.png)
-
----
-
-## 16. Design Decisions
-
-### Kubernetes
-
-Kubernetes was selected because it provides container orchestration, service discovery, health checks, scaling and declarative infrastructure management.
-
-### MicroK8s
-
-MicroK8s was used because it provides a lightweight Kubernetes distribution suitable for a single-node development and testing environment.
-
-### MariaDB
-
-MariaDB is used as the relational database backend required by WordPress.
-
-### PersistentVolumeClaims
-
-Persistent storage is required because WordPress and MariaDB must preserve data across Pod restarts.
-
-### Kubernetes Secrets
-
-Database credentials are stored in Secrets rather than being hard-coded into Deployment manifests.
-
-### Ingress
-
-Ingress provides a single HTTP/HTTPS entry point for WordPress and enables TLS termination.
-
-### HPA
-
-HPA allows the WordPress application to scale horizontally when CPU utilisation increases.
-
-### PDB
-
-PDB reduces the risk of voluntary disruptions removing all available WordPress replicas simultaneously.
-
-### Helm
-
-Helm provides parameterisation and repeatable deployments and separates configuration from Kubernetes templates.
-
----
-
-## 17. Repository Structure
+Recommended repository structure:
 
 ```text
 .
 ├── README.md
-├── Dockerfile
-├── manifest/
-│   ├── namespace.yaml
-│   ├── mariadb.yaml
-│   ├── wordpress.yaml
-│   ├── ingress.yaml
-│   ├── hpa.yaml
-│   ├── pdb.yaml
-│   └── ...
+├── docker/
+│   ├── Dockerfile
+│   └── .dockerignore
+├── kubernetes/
+│   ├── database/
+│   │   ├── namespace.yaml
+│   │   ├── statefulset.yaml
+│   │   ├── service.yaml
+│   │   ├── pvc.yaml
+│   │   ├── secret.yaml
+│   │   ├── backup-cronjob.yaml
+│   │   └── networkpolicy.yaml
+│   │
+│   └── wordpress/
+│       ├── namespace.yaml
+│       ├── deployment.yaml
+│       ├── service.yaml
+│       ├── pvc.yaml
+│       ├── ingress.yaml
+│       ├── configmap.yaml
+│       ├── secret.yaml
+│       └── networkpolicy.yaml
+│
 ├── helm/
 │   └── wordpress/
-│       ├── Chart.yaml
-│       ├── values.yaml
-│       └── templates/
-└── screenshots/
+│
+└── docs/
+    └── screenshots/
 ```
 
-All Kubernetes YAML manifests and the Helm chart are stored in the Git repository for reproducible deployment.
+Sensitive credentials should not be committed to GitHub.
 
 ---
 
-## 18. Additional Improvements
+# 32. Useful verification commands
 
-The following improvements can be implemented as additional Kubernetes/DevOps features:
+### Kubernetes
 
-* CI/CD using GitHub Actions
-* Automated Docker image build
-* Automated Helm deployment
-* Zero-downtime application updates
-* Automated WordPress updates
-* Database migration strategy
-* Improved backup and restore procedure
-* Production-grade monitoring
-* NetworkPolicies
-* Pod security hardening
+```bash
+microk8s kubectl get nodes
+microk8s kubectl get pods -A
+microk8s kubectl get svc -A
+microk8s kubectl get pvc -A
+microk8s kubectl get ingress -A
+```
+
+### PostgreSQL
+
+```bash
+microk8s kubectl get statefulset -n database
+microk8s kubectl get pvc -n database
+microk8s kubectl get cronjob -n database
+microk8s kubectl get jobs -n database
+```
+
+### WordPress
+
+```bash
+microk8s kubectl get deployment -n wordpress
+microk8s kubectl get pods -n wordpress
+microk8s kubectl get svc -n wordpress
+microk8s kubectl get ingress -n wordpress
+```
+
+### Ingress
+
+```bash
+microk8s kubectl get pods -n ingress
+microk8s kubectl get svc -n ingress
+```
+
+### Nginx
+
+```bash
+sudo nginx -t
+sudo systemctl status nginx
+```
+
+### HTTPS
+
+```bash
+curl -k -I https://wordpress.local/wp-admin/install.php
+```
+
+Expected:
+
+```text
+HTTP/2 200
+```
+
+---
+
+# 33. Conclusion
+
+This project demonstrates a complete Kubernetes-based WordPress deployment on Debian 12 using MicroK8s.
+
+The environment includes:
+
+* Kubernetes orchestration
+* PostgreSQL StatefulSet
+* Persistent storage
+* Automated database backups
+* WordPress Deployment
+* Kubernetes Services
+* Traefik Ingress
+* TLS
+* Nginx reverse proxy
+* Kubernetes Secrets
+* ConfigMaps
+* NetworkPolicy
+* SecurityContext
+* Resource management
+* Health checks
+* Rolling updates
+* Helm-based deployment
+* Custom WordPress container image
+
+The configuration provides a reproducible foundation for deploying a stateful web application using Kubernetes while applying common DevOps and security practices.
